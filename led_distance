@@ -1,0 +1,76 @@
+const int trigPin = 19;   // Pino Trig do sensor HC-SR04
+const int echoPin = 18;   // Pino Echo do sensor HC-SR04
+
+const int ledPin1 = 2;    
+const int ledPin2 = 4;
+const int ledPin3 = 16;
+const int ledPin4 = 17;
+const int ledPin5 = 5;
+
+long distance = 0;
+
+long readUltrasonicDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  long duration = pulseIn(echoPin, HIGH);
+  long dist = duration * 0.034 / 2;
+  
+  return dist;
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(ledPin1, OUTPUT);
+  pinMode(ledPin2, OUTPUT);
+  pinMode(ledPin3, OUTPUT);
+  pinMode(ledPin4, OUTPUT);
+  pinMode(ledPin5, OUTPUT);
+}
+
+void loop() {
+  
+  // Update the distance regularly
+  distance = readUltrasonicDistance();
+  
+  Serial.print("Measured Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+  
+  delay(50); // Small delay to avoid overwhelming the sensor
+  
+  if (distance <= 20) {
+    digitalWrite(ledPin1, HIGH);
+  } else {
+    digitalWrite(ledPin1, LOW);
+  }
+  
+  if (distance <= 50) {
+    digitalWrite(ledPin2, HIGH);
+  } else {
+    digitalWrite(ledPin2, LOW);
+  }
+  
+  if (distance <= 100) {
+    digitalWrite(ledPin3, HIGH);
+  } else {
+    digitalWrite(ledPin3, LOW);
+  }
+  
+  if (distance <= 150) {
+    digitalWrite(ledPin4, HIGH);
+  } else {
+    digitalWrite(ledPin4, LOW);
+  }
+  
+  if (distance <= 200) {
+    digitalWrite(ledPin5, HIGH);
+  } else {
+    digitalWrite(ledPin5, LOW);
+  }
+}
