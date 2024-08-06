@@ -1,0 +1,100 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char *ssid = "ESP32-AP";       // Nome da rede Wi-Fi (SSID)
+const char *password = "12345678";   // Senha da rede Wi-Fi
+
+WebServer server(80);
+
+const int trigPin = 32;   // Pino Trig do sensor HC-SR04
+const int echoPin = 34;  // Pino Echo do sensor HC-SR04
+const int ledPin = 2;    // Pino onde o LED está conectado
+
+
+const int pin = 25; // Defina o pino onde o sinal PWM será gerado
+const int frequency = 500; // Frequência do tom em Hz (1000 Hz para exemplo)
+long distance = 0;
+
+long readUltrasonicDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  long duration = pulseIn(echoPin, HIGH);
+  long distance = duration * 0.034 / 2;
+  
+  return distance;
+}
+
+void handleRoot() {
+  String html = "<html><head><title>ESP32 Distance Sensor</title></head><body>";
+  html += "<h1>Sensor Distance Data</h1>";
+  html += "<div id=\"distance\"></div>";
+  html += "<script>";
+  html += "function fetchData() {";
+  html += "  fetch('/distance').then(response => response.text()).then(data => {";
+  html += "    document.getElementById('distance').innerHTML = 'Distance: ' + data + ' cm';";
+  html += "  });";
+  html += "}";
+  html += "setInterval(fetchData, 100);"; // Atualiza a cada 500 ms
+  html += "</script>";
+  html += "</body></html>";
+  server.send(200, "text/html", html);
+}
+
+void handleDistance() {
+  distance = readUltrasonicDistance();
+  server.send(200, "text/plain", String(distance));
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  // Configura o ESP32 como um ponto de acesso
+  WiFi.softAP(ssid, password);
+  Serial.println("Acess Point.");
+  Serial.print("IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Configura as rotas do servidor web
+  server.on("/", handleRoot);
+  server.on("/distance", handleDistance);
+
+  // Inicia o servidor web
+  server.begin();
+  Serial.println("Servidor HTTP iniciado.");
+}
+
+void loop() {
+  if (distance < 20){
+    tone(pin, frequency);
+    delay(50);
+    noTone(pin); 
+    delay(50);
+  }
+  if (distance >= 20 and distance < 50){
+    tone(pin, frequency);
+    delay(100);
+    noTone(pin); 
+    delay(100);
+  }
+  if (distance >= 50 and distance < 80){
+    tone(pin, frequency);
+    delay(200);
+    noTone(pin); 
+    delay(200);
+  }
+  if (distance >= 80 and distance < 100){
+    tone(pin, frequency);
+    delay(300);
+    noTone(pin);
+    delay(300); 
+  }
+  
+  
+  server.handleClient();
+}
