@@ -1,0 +1,202 @@
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncTCP.h>
+#include <nvs_flash.h>
+#include <map>
+
+// Wi-Fi credentials
+const char* ssid = "esp32_websockets";
+const char* password = "12345678";
+
+// Create an instance of the AsyncWebServer on port 80
+AsyncWebServer server(80);
+// Create a WebSocket object on the path "/ws"
+AsyncWebSocket ws("/ws");
+
+// Mapeamento entre IDs de clientes e nomes de usuário
+std::map<uint64_t, String> users;
+
+// Verifica se o nome de usuário já está em uso
+bool isUsernameTaken(const String& username) {
+    for (const auto& user : users) {
+        if (user.second == username) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// WebSocket event handler
+void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, 
+                      AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    uint64_t clientId = client->id();
+    
+     if (type == WS_EVT_CONNECT) {
+        Serial.printf("Client %d connected\n", clientId);
+        client->text("Please enter your username:");
+
+    } else if (type == WS_EVT_DISCONNECT) {
+        Serial.printf("Client %d disconnected\n", clientId);
+        if (users.find(clientId) != users.end()) {
+            String username = users[clientId];
+            users.erase(clientId);
+            ws.textAll(username + " has left the chat.");
+        }
+
+    } else if (type == WS_EVT_DATA) {
+        String receivedData = String((char*)data, len);
+        receivedData.trim();
+
+        if (users.find(clientId) == users.end()) {
+            // Cliente ainda não tem nome de usuário, precisa escolher um
+            if (isUsernameTaken(receivedData)) {
+                client->text("Username already taken, please choose another one:");
+            } else {
+                users[clientId] = receivedData;
+                ws.textAll(receivedData + " has joined the chat.");
+            }
+        } else {
+            // Cliente já tem um nome de usuário, envia a mensagem para todos
+            String username = users[clientId];
+            ws.textAll(username + ": " + receivedData);
+        }
+    }
+
+}
+
+// Function to handle the root URL ("/") and serve the HTML/JS
+void handleRootRequest(AsyncWebServerRequest *request) {
+    String html = R"rawliteral(
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>ESP32 WebSocket Chat</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    display: flex;
+                    flex-direction: column;
+                    height: 100vh;
+                    justify-content: space-between;
+                }
+                #chat {
+                    flex-grow: 1;
+                    padding: 10px;
+                    overflow-y: auto;
+                    border-bottom: 1px solid #ccc;
+                }
+                #inputContainer {
+                    display: flex;
+                    padding: 10px;
+                }
+                #input {
+                    flex-grow: 1;
+                    padding: 10px;
+                    font-size: 16px;
+                    border: 1px solid #ccc;
+                    border-radius: 5px;
+                }
+                button {
+                    padding: 10px 20px;
+                    font-size: 16px;
+                    margin-left: 10px;
+                    border: none;
+                    background-color: #28a745;
+                    color: white;
+                    border-radius: 5px;
+                    cursor: pointer;
+                }
+                button:active {
+                    background-color: #218838;
+                }
+            </style>
+        </head>
+        <body>
+            <h2>ESP32 WebSocket Chat</h2>
+            <div id="chat"></div>
+            <div id="inputContainer">
+                <input type="text" id="input" placeholder="Enter message here...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+
+            <script>
+                const ws = new WebSocket(`ws://${window.location.hostname}/ws`);
+
+                ws.onopen = () => {
+                    console.log('WebSocket Connected');
+                };
+
+                ws.onmessage = (event) => {
+                    const chat = document.getElementById('chat');
+                    chat.innerHTML += `<p>${event.data}</p>`;
+                    chat.scrollTop = chat.scrollHeight;  // Scroll para a última mensagem
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket Disconnected');
+                };
+
+                function sendMessage() {
+                    const input = document.getElementById('input');
+                    if (input.value.trim() !== '') {
+                        ws.send(input.value);
+                        input.value = ''; // Limpar o campo de entrada
+                    }
+                }
+
+                // Enviar mensagem ao pressionar Enter
+                document.getElementById('input').addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendMessage();
+                    }
+                });
+            </script>
+        </body>
+        </html>
+    )rawliteral";
+
+    request->send(200, "text/html", html);
+}
+
+
+
+
+void setup() {
+    // Start Serial monitor for debugging
+    Serial.begin(115200);
+
+    // Limpa qualquer AP existente e a memória NVS
+    WiFi.softAPdisconnect(true);
+    nvs_flash_erase();
+    nvs_flash_init();
+  
+    //Configura o ESP32 como um ponto de acesso
+    WiFi.softAP(ssid, password);
+    Serial.println(ssid);
+    Serial.println(password);
+    Serial.println("Acess Point.");
+    Serial.print("IP: ");
+    Serial.println(WiFi.softAPIP());
+
+    // Handle requests to the root URL ("/") with the HTML page
+    server.on("/", HTTP_GET, handleRootRequest);
+
+    // Attach the WebSocket event handler
+    ws.onEvent(onWebSocketEvent);
+
+    // Add WebSocket to the server
+    server.addHandler(&ws);
+
+    // Start the web server
+    server.begin();
+    Serial.println("WebSocket server started");
+}
+
+void loop() {
+    // This allows the WebSocket to handle incoming messages
+    ws.cleanupClients();
+}
